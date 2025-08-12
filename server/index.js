@@ -1,35 +1,44 @@
-import express from "express"
-import { pool } from "../server/conection_db.js"
+import { Router } from 'express';
+import pool from './conection_db.js';
 
-const app = express()
-app.use(express.json()) 
+const router = Router();
 
+router.post('/', async (req, res) => {
+  const { client_id, invoiced_number, platform_used, period, invoiced_amount } = req.body;
+  if (!client_id || !invoiced_number || !platform_used || !period || !invoiced_amount) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+  const [result] = await pool.query(
+    'INSERT INTO payments (client_id, invoiced_number, platform_used, period, invoiced_amount) VALUES (?, ?, ?, ?, ?)',
+    [client_id, invoiced_number, platform_used, period, invoiced_amount]
+  );
+  res.json({ id: result.insertId, ...req.body });
+});
 
-app.get('/payments', async (req, res) => {
-    try {
-        const [rows] = await pool.query(`
-        SELECT 
-            p.plataform_used,
-            p.invoiced_number,
-            p.period,
-            p.invoiced_amount,
-            u.amount_paid,            
-        FROM payments p
-        LEFT JOIN clients c ON p.client_id = u.client_id
-        LEFT JOIN transactions t ON p.id_transaction = t.id_transaction
-        `);
+router.get('/', async (req, res) => {
+  const [rows] = await pool.query('SELECT * FROM payments');
+  res.json(rows);
+});
 
-        res.json(rows);
-
-    } catch (error) {
-        res.status(500).json({
-            status: 'error',
-            endpoint: req.originalUrl,
-            method: req.method,
-            message: error.message
-        });
-    }
+router.get('/:id', async (req, res) => {
+  const [rows] = await pool.query('SELECT * FROM payments WHERE payment_id = ?', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  res.json(rows[0]);
 });
 
 
+router.put('/:id', async (req, res) => {
+  const { client_id, invoiced_number, platform_used, period, invoiced_amount } = req.body;
+  const [result] = await pool.query(
+    'UPDATE payments SET client_id = ?, invoiced_number = ?, platform_used = ?, period = ?, invoiced_amount = ? WHERE payment_id = ?',
+    [client_id, invoiced_number, platform_used, period, invoiced_amount, req.params.id]
+  );
+  if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ message: 'Updated successfully' });
+});
 
+router.delete('/:id', async (req, res) => {
+  const [result] = await pool.query('DELETE FROM payments WHERE payment_id = ?', [req.params.id]);
+  if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ message: 'Deleted successfully' });
+});
